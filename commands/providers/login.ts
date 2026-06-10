@@ -7,25 +7,24 @@ export const loginCommand = new Command("login")
     .option('-p, --provider <providerName>', 'Name of the provider (gemini, claude etc)', '') 
     .option('-a, --api_key <apiKey>', 'Your api key', '')
     .action((options) => {
-        console.log("logging into " + options.providerName)
+        console.log("logging into " + options.provider)
         const authDir = path.join(os.homedir(), '.local', 'share', 'opencode');
-                const modelFile = path.join(authDir, 'model.json');
+        const authFile = path.join(authDir, 'authFile.json');
         
-                try{
-                    fs.mkdirSync(authDir, { recursive: true })
+        try{
+            fs.mkdirSync(authDir, { recursive: true })
                 }
-                catch(e){
-                    console.log(e)
-                }
-        
-                let currentData: any = {}
-                if (fs.existsSync(modelFile)){
-                    const fileContent = fs.readFileSync(modelFile, 'utf-8')
-                    currentData = JSON.parse(fileContent);
-                }
-                
-                currentData.model=options.provider
-                console.log(currentData)
-                fs.writeFileSync(modelFile,JSON.stringify(currentData))
-            })
+        catch(e){
+            console.log(e)
+        }
+
+        let currentData: any = {}
+        if (fs.existsSync(authFile)){
+            const fileContent = fs.readFileSync(authFile, 'utf-8')
+            currentData = JSON.parse(fileContent);
+        }
+        currentData[options.provider]={key: options.api_key}
+        console.log(currentData)
+        fs.writeFileSync(authFile,JSON.stringify(currentData))
+    })
         
