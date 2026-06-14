@@ -13,7 +13,7 @@ export const agentCommand = new Command("agent")
     const authDir = path.join(os.homedir(), '.local', 'share', 'opencode');
     const modelFile = path.join(authDir, 'model.json');
     const authFile = path.join(authDir, 'authFile.json');
-
+    const memoryFile = path.join(authDir,'memoryFile.json')
     const content1  = fs.readFileSync(modelFile,'utf-8')
     const content2 = fs.readFileSync(authFile,'utf-8')
 
@@ -30,14 +30,38 @@ export const agentCommand = new Command("agent")
     apiKey : api_key
   });
 
-  async function main() {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: options.prompt,
-    });
-    console.log(response.text);
+  let memory=[]
+  if (fs.existsSync(memoryFile,)){
+    let contents = fs.readFileSync(memoryFile,'utf-8')
+    console.log(JSON.parse(contents))
+    memory.push(JSON.parse(contents))
   }
 
-  main();
+  memory.push({"user" : options.prompt})
+
+  async function main(memory) {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: memory,
+    });
+    return response.text
+  }
+
+  async function main() {
+  const chat = ai.chats.create({ model: "gemini-2.5-flash" });
+
+  let response = await chat.sendMessage({ message: options.prompt });
+  console.log("Response 1:", response.text);
+
+  response = await chat.sendMessage({ message: "How many paws are in my house?" });
+  console.log("Response 2:", response.text);
+}
+
+  
+  const response= main(memory);
+  memory[-1].llm=response
+  console.log(response)
+  
+  fs.writeFileSync(memoryFile,JSON.stringify(memory))
     
 });
