@@ -7,61 +7,54 @@ import { GoogleGenAI } from "@google/genai";
 export const agentCommand = new Command("agent")
   .description('Runs the agent')
   .option('-p, --prompt <prompt>', 'prompt', '')
-  .action((options) => {
+  .action(async (options) => {
     console.log("User prompt is ..." + options.prompt);
 
     const authDir = path.join(os.homedir(), '.local', 'share', 'opencode');
     const modelFile = path.join(authDir, 'model.json');
     const authFile = path.join(authDir, 'authFile.json');
-    const memoryFile = path.join(authDir,'memoryFile.json')
-    const content1  = fs.readFileSync(modelFile,'utf-8')
-    const content2 = fs.readFileSync(authFile,'utf-8')
+    const memoryFile = path.join(authDir, 'memoryFile.json')
+    const content1 = fs.readFileSync(modelFile, 'utf-8')
+    const content2 = fs.readFileSync(authFile, 'utf-8')
 
     const model_data = JSON.parse(content1)
     const auth_data = JSON.parse(content2)
 
     JSON.parse(content2)
-    const current_model   = model_data.model
+    const current_model = model_data.model
     const api_key = auth_data[current_model]?.key
 
 
-    
-  const ai = new GoogleGenAI({
-    apiKey : api_key
-  });
 
-  let memory=[]
-  if (fs.existsSync(memoryFile,)){
-    let contents = fs.readFileSync(memoryFile,'utf-8')
-    console.log(JSON.parse(contents))
-    memory.push(JSON.parse(contents))
-  }
-
-  memory.push({"user" : options.prompt})
-
-  async function main(memory) {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: memory,
+    const ai = new GoogleGenAI({
+      apiKey: api_key
     });
-    return response.text
-  }
 
-  async function main() {
-  const chat = ai.chats.create({ model: "gemini-2.5-flash" });
+    let memory = []
+    if (fs.existsSync(memoryFile)) {
+      const contents = fs.readFileSync(memoryFile, 'utf-8')
+      try {
+        if (contents.trim() !== "") {
+          memory = (JSON.parse(contents))
+        }
+      }
+      catch (e) {
+        console.log("memory file empty");
+        memory = []
+      }
 
-  let response = await chat.sendMessage({ message: options.prompt });
-  console.log("Response 1:", response.text);
+    }
 
-  response = await chat.sendMessage({ message: "How many paws are in my house?" });
-  console.log("Response 2:", response.text);
-}
 
-  
-  const response= main(memory);
-  memory[-1].llm=response
-  console.log(response)
-  
-  fs.writeFileSync(memoryFile,JSON.stringify(memory))
-    
-});
+    const chat = ai.chats.create({
+      model: "gemini-2.5-flash",
+      history: memory,
+    });
+
+    let response = await chat.sendMessage({ message: options.prompt });
+    console.log("\nAgent:", response.text);
+
+
+    const updatedMemory = await chat.getHistory();
+    fs.writeFileSync(memoryFile, JSON.stringify(updatedMemory, null, 2))
+  });
