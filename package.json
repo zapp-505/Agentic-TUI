@@ -9,8 +9,11 @@
     "@types/bun": "^1.3.14",
     "@types/node": "^25.9.2"
   },
-  "name": "tui-starter",
+  "name": "opencode",
   "private": true,
+  "bin": {
+    "opencode": "clis.ts"
+  },
   "peerDependencies": {
     "typescript": "^5"
   }
