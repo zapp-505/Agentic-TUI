@@ -1,7 +1,7 @@
 import { Type } from "@google/genai";
+import type { FunctionDeclaration } from "@google/genai";
 
-export const runBashCommandDeclaration = {
-    type: "function",
+export const runBashCommandDeclaration: FunctionDeclaration = {
   name: "run_bash_command",
   description:
     "Executes a bash/shell command inside the project directory on the host machine.",
@@ -16,36 +16,34 @@ export const runBashCommandDeclaration = {
     },
     required: ["command"],
   },
-}as const;
+};
 
-export const readFileCommandDeclaration = {
-    type: "function",
+export const readFileCommandDeclaration: FunctionDeclaration = {
     name: "readFile",
     description: "Read a file in the project directory",
     parameters: {
-        type: "object",
+        type: Type.OBJECT,
         properties: {
             path: {
-                type: "string",
+                type: Type.STRING,
                 description: "Path to the file to read"
             }
         },
         required: ["path"]
     }
-}as const ;
+};
 
-export const writeFileCommandDeclaration = {
-    type: "function",
+export const writeFileCommandDeclaration: FunctionDeclaration = {
     name: "writeFile",
     description: "Write a file in the project directory",
     parameters: {
-      type: "object",
+      type: Type.OBJECT,
       properties : {
         path : {
-          type : "string",
+          type : Type.STRING,
           description: "Path to the file to write"
         }
       },
       required : ["path"]
     }
-} as const;
+};

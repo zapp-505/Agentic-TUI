@@ -12,7 +12,7 @@
   "name": "opencode",
   "private": true,
   "bin": {
-    "opencode": "clis.ts"
+    "opencode": "cli.ts"
   },
   "peerDependencies": {
     "typescript": "^5"

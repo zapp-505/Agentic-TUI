@@ -3,7 +3,8 @@ import fs from 'fs'
 import path from "path";
 import os from 'os'
 import { GoogleGenAI } from "@google/genai";
-
+import { SystemPrompt } from "./utils/prompt";
+import { runBashCommandDeclaration,readFileCommandDeclaration,writeFileCommandDeclaration } from "./utils/ai";
 export const agentCommand = new Command("agent")
   .description('Runs the agent')
   .option('-p, --prompt <prompt>', 'prompt', '')
@@ -49,6 +50,11 @@ export const agentCommand = new Command("agent")
     const chat = ai.chats.create({
       model: "gemini-2.5-flash",
       history: memory,
+    config: {
+      systemInstruction: SystemPrompt,
+      tools: [{ functionDeclarations: [runBashCommandDeclaration,readFileCommandDeclaration,writeFileCommandDeclaration] }],
+    },
+      
     });
 
     let response = await chat.sendMessage({ message: options.prompt });
