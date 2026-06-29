@@ -2,6 +2,9 @@ import { execSync } from 'child_process';
 import fs from 'fs'
 
 export const bashTool = (command: string) => {
+  if (command.includes('sudo')) {
+    return { success: false, error: "sudo is not allowed." };
+  }
   try {
     const result = execSync(command, {
       encoding: "utf-8",
@@ -35,6 +38,7 @@ export const readTool = (path: string)=>{
 }
 
 export const writeTool = (path: string,content:string)=>{
+    
   try{
     fs.writeFileSync(path, content, "utf-8");
     return {

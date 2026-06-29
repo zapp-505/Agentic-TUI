@@ -1,66 +1,117 @@
-import { Command } from "commander";
-import fs from 'fs'
-import path from "path";
-import os from 'os'
-import { GoogleGenAI } from "@google/genai";
-import { SystemPrompt } from "./utils/prompt";
-import { runBashCommandDeclaration,readFileCommandDeclaration,writeFileCommandDeclaration } from "./utils/ai";
-export const agentCommand = new Command("agent")
-  .description('Runs the agent')
-  .option('-p, --prompt <prompt>', 'prompt', '')
-  .action(async (options) => {
-    console.log("User prompt is ..." + options.prompt);
-
-    const authDir = path.join(os.homedir(), '.local', 'share', 'opencode');
-    const modelFile = path.join(authDir, 'model.json');
-    const authFile = path.join(authDir, 'authFile.json');
-    const memoryFile = path.join(authDir, 'memoryFile.json')
-    const content1 = fs.readFileSync(modelFile, 'utf-8')
-    const content2 = fs.readFileSync(authFile, 'utf-8')
-
-    const model_data = JSON.parse(content1)
-    const auth_data = JSON.parse(content2)
-
-    JSON.parse(content2)
-    const current_model = model_data.model
-    const api_key = auth_data[current_model]?.key
+  import { Command } from "commander";
+  import fs from 'fs'
+  import path from "path";
+  import os from 'os'
+  import { FunctionResponse, GoogleGenAI, type FunctionCall } from "@google/genai";
+  import { SystemPrompt } from "./utils/prompt";
+  import { runBashCommandDeclaration,readFileCommandDeclaration,writeFileCommandDeclaration } from "./utils/ai";
+  import { bashTool,readTool,writeTool } from "./utils/tools";
 
 
 
-    const ai = new GoogleGenAI({
-      apiKey: api_key
-    });
+  export const agentCommand = new Command("agent")
+    .description('Runs the agent')
+    .option('-p, --prompt <prompt>', 'prompt', '')
+    .action(async (options) => {
+      console.log("User prompt is ..." + options.prompt);
 
-    let memory = []
-    if (fs.existsSync(memoryFile)) {
-      const contents = fs.readFileSync(memoryFile, 'utf-8')
-      try {
-        if (contents.trim() !== "") {
-          memory = (JSON.parse(contents))
+      const authDir = path.join(os.homedir(), '.local', 'share', 'opencode');
+      const modelFile = path.join(authDir, 'model.json');
+      const authFile = path.join(authDir, 'authFile.json');
+      const memoryFile = path.join(authDir, 'memoryFile.json')
+      const content1 = fs.readFileSync(modelFile, 'utf-8')
+      const content2 = fs.readFileSync(authFile, 'utf-8')
+
+      const model_data = JSON.parse(content1)
+      const auth_data = JSON.parse(content2)
+
+      JSON.parse(content2)
+      const current_model = model_data.model
+      const api_key = auth_data[current_model]?.key
+
+
+
+      const ai = new GoogleGenAI({
+        apiKey: api_key
+      });
+
+      let memory = []
+      if (fs.existsSync(memoryFile)) {
+        const contents = fs.readFileSync(memoryFile, 'utf-8')
+        try {
+          if (contents.trim() !== "") {
+            memory = (JSON.parse(contents))
+          }
+        }
+        catch (e) {
+          console.log("memory file empty");
+          memory = []
+        }
+
+      }
+
+
+      const chat = ai.chats.create({
+        model: "gemini-2.5-flash",
+        history: memory,
+      config: {
+        systemInstruction: SystemPrompt,
+        tools: [{ functionDeclarations: [runBashCommandDeclaration,readFileCommandDeclaration,writeFileCommandDeclaration] }],
+      },
+        
+      });
+
+      let initial_msg: any = options.prompt;
+      const MAX_ITERATIONS=25
+      let iterations=0
+
+      async function executeTool(name : any,args: any){
+        if(name==='run_bash_command'){
+          return bashTool(args.command)
+        }
+        else if(name==='readFile'){
+          return readTool(args.path)
+        }
+        else if(name==='writeFile'){
+          return writeTool(args.path,args.content)
+        }
+        else{
+          return "Tool not found"
         }
       }
-      catch (e) {
-        console.log("memory file empty");
-        memory = []
-      }
 
+      while (iterations++ < MAX_ITERATIONS){
+        let stream = await chat.sendMessageStream({ message: initial_msg });
+        
+        const calls: FunctionCall[] = [];
+
+        for await (const chunk of stream){
+          if (chunk.text) process.stdout.write(chunk.text);
+          if (chunk.functionCalls?.length) calls.push(...chunk.functionCalls);
+        }
+        console.log()
+        if (calls.length === 0) break;
+
+        const responses = [];
+
+        for (const call of calls){
+          console.log(`\n🔧 Calling tool: ${call.name}`, call.args);
+          let response;
+          try{
+            response = await executeTool(call.name, call.args)
+          }catch(error: any){
+            response = {success : false, error: error.message}
+          }
+          responses.push({functionResponse : { name:  call.name,response,id: call.id?call.id:''}})
+      }
+      initial_msg = responses;
     }
 
-
-    const chat = ai.chats.create({
-      model: "gemini-2.5-flash",
-      history: memory,
-    config: {
-      systemInstruction: SystemPrompt,
-      tools: [{ functionDeclarations: [runBashCommandDeclaration,readFileCommandDeclaration,writeFileCommandDeclaration] }],
-    },
-      
-    });
-
-    let response = await chat.sendMessage({ message: options.prompt });
-    console.log("\nAgent:", response.text);
-
+    if (iterations >= MAX_ITERATIONS) {
+      console.warn("\n  Max iterations reached. The agent stopped.");
+    }
 
     const updatedMemory = await chat.getHistory();
-    fs.writeFileSync(memoryFile, JSON.stringify(updatedMemory, null, 2))
+    fs.writeFileSync(memoryFile, JSON.stringify(updatedMemory, null, 2));
+
   });
