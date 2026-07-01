@@ -2,23 +2,21 @@ import { Command } from "commander";
 import fs from 'fs'
 import path from "path";
 import os from 'os'
-import { FunctionResponse, GoogleGenAI, type FunctionCall } from "@google/genai";
-import { SystemPrompt } from "./utils/prompt";
-import { runBashCommandDeclaration, readFileCommandDeclaration, writeFileCommandDeclaration } from "./utils/ai";
-import { bashTool, readTool, writeTool } from "./utils/tools";
 import chalk from "chalk";
-
+import { createClient } from "./utils/client";
+import { gemini_loop } from "./utils/gemini/gemini_implementation";
+import { groq_loop } from "./utils/groq/groq_implementation";
+import { getSystemPrompt } from "./utils/prompt";
 
 export const agentCommand = new Command("agent")
   .description('Runs the agent')
   .option('-p, --prompt <prompt>', 'prompt', '')
   .action(async (options) => {
-
-
+    const cwd = process.cwd(); // this is wherever the user ran "opencode agent" from
+    const systemPrompt = getSystemPrompt(cwd);
     const authDir = path.join(os.homedir(), '.local', 'share', 'opencode');
     const modelFile = path.join(authDir, 'model.json');
     const authFile = path.join(authDir, 'authFile.json');
-    const memoryFile = path.join(authDir, 'memoryFile.json')
     const content1 = fs.readFileSync(modelFile, 'utf-8')
     const content2 = fs.readFileSync(authFile, 'utf-8')
 
@@ -27,6 +25,7 @@ export const agentCommand = new Command("agent")
 
     const current_model = model_data.model
     const api_key = auth_data[current_model]?.key
+    const memoryFile = path.join(authDir, `memory_${current_model}.json`)
     console.clear();
     console.log(chalk.cyan.bold("  ██████╗ ██████╗ ███████╗███╗   ██╗"));
     console.log(chalk.cyan.bold("  ██╔═══██╗██╔══██╗██╔════╝████╗  ██║"));
@@ -41,91 +40,57 @@ export const agentCommand = new Command("agent")
     console.log(chalk.cyan.bold("============================================"))
     console.log();
 
-
     console.log(chalk.gray("User prompt is ..." + options.prompt));
-    const ai = new GoogleGenAI({
-      apiKey: api_key
-    });
 
-    let memory = []
+    
+    let memory: any[] = []
     if (fs.existsSync(memoryFile)) {
       const contents = fs.readFileSync(memoryFile, 'utf-8')
       try {
         if (contents.trim() !== "") {
-          memory = (JSON.parse(contents))
+          memory = JSON.parse(contents)
         }
       }
       catch (e) {
         console.log("memory file empty");
         memory = []
       }
-
     }
 
+    const clientData = await createClient(current_model, api_key, memory, systemPrompt);
 
-    const chat = ai.chats.create({
-      model: "gemini-2.5-flash",
-      history: memory,
-      config: {
-        systemInstruction: SystemPrompt,
-        tools: [{ functionDeclarations: [runBashCommandDeclaration, readFileCommandDeclaration, writeFileCommandDeclaration] }],
-      },
-
-    });
-
-    let initial_msg: any = options.prompt;
     const MAX_ITERATIONS = 25
     let iterations = 0
 
-    async function toolMapper(name: any, args: any) {
-      if (name === 'run_bash_command') {
-        return bashTool(args.command)
-      }
-      else if (name === 'readFile') {
-        return readTool(args.path)
-      }
-      else if (name === 'writeFile') {
-        return writeTool(args.path, args.content)
-      }
-      else {
-        return "Tool not found"
-      }
-    }
+    if (clientData.type === "gemini") {
+      let initial_msg: any = options.prompt;
 
-    while (iterations++ < MAX_ITERATIONS) {
-      let stream = await chat.sendMessageStream({ message: initial_msg });
-
-      const calls: FunctionCall[] = [];
-
-      for await (const chunk of stream) {
-        if (chunk.text) process.stdout.write(chunk.text);
-        if (chunk.functionCalls?.length) calls.push(...chunk.functionCalls);
+      while (iterations++ < MAX_ITERATIONS) {
+        const responses = await gemini_loop(clientData.chat, initial_msg);
+        if (responses.length === 0) break;
+        initial_msg = responses;
       }
-      console.log()
-      if (calls.length === 0) break;
 
-      const responses = [];
 
-      for (const call of calls) {
-        console.log(chalk.white("Tool: " + call.name));
-        let response;
-        try {
-          response = await toolMapper(call.name, call.args)
-        } catch (error: any) {
-          console.log(chalk.red(" Error: ") + error.message);
-          response = { success: false, error: error.message }
-        }
-        console.log(chalk.gray("─".repeat(50)));
-        responses.push({ functionResponse: { name: call.name, response, id: call.id ? call.id : '' } })
+      const updatedMemory = await clientData.chat.getHistory();
+      fs.writeFileSync(memoryFile, JSON.stringify(updatedMemory, null, 2));
+
+    } else if (clientData.type === "groq") {
+      
+      clientData.messages.push({ role: "user", content: options.prompt });
+
+      while (iterations++ < MAX_ITERATIONS) {
+        const result = await groq_loop(clientData.client, clientData.messages);
+        clientData.messages = result.messages;
+        if (result.done) break;
       }
-      initial_msg = responses;
+
+      
+      const historyToSave = clientData.messages.filter((m: any) => m.role !== "system");
+      fs.writeFileSync(memoryFile, JSON.stringify(historyToSave, null, 2));
     }
 
     if (iterations >= MAX_ITERATIONS) {
       console.warn("\n  Max iterations reached. The agent stopped.");
     }
-
-    const updatedMemory = await chat.getHistory();
-    fs.writeFileSync(memoryFile, JSON.stringify(updatedMemory, null, 2));
-
   });

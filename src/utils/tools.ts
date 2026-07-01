@@ -52,3 +52,18 @@ export const writeTool = (path: string,content:string)=>{
     };
   }
 }
+
+export async function toolMapper(name: any, args: any) {
+      if (name === 'run_bash_command') {
+        return bashTool(args.command)
+      }
+      else if (name === 'readFile') {
+        return readTool(args.path)
+      }
+      else if (name === 'writeFile') {
+        return writeTool(args.path, args.content)
+      }
+      else {
+        return "Tool not found"
+      }
+}

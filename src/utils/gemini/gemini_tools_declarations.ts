@@ -42,8 +42,12 @@ export const writeFileCommandDeclaration: FunctionDeclaration = {
         path : {
           type : Type.STRING,
           description: "Path to the file to write"
+        },
+        content:{
+            type:Type.STRING,
+            description: "Content to write in the file"
         }
       },
-      required : ["path"]
+      required : ["path","content"]
     }
 };
